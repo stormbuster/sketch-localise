@@ -1,0 +1,42 @@
+{
+  "name": "Localizer",
+  "description" : "Localises Sketch files using Mac and iOS localisable.strings files",
+  "author": "Robert Kortenoeven",
+  "authorEmail" : "robert@welivelikethis.net",
+  "homepage": "http://welivelikethis.net",
+  "identifier" : "PLUGIN_IDENTIFIER",
+  "compatibleVersion": 44,
+  "build": "PLUGIN_BUILD",
+  "version": "PLUGIN_VERSION",
+  
+  "commands" : [
+   {
+     "script" : "LocalizerScript.cocoascript",
+     "handlers" : {
+       "actions" : {
+         "Startup" : "onStartup",
+         "OpenDocument":"onOpenDocument",
+         "SelectionChanged.finish" : "onSelectionChanged"
+       }
+     }
+   },
+   {
+     "script" : "StoreExportPanel.framework/StoreExportPanel.js",
+     "handlers" : {
+       "actions" : {
+         "Startup" : "onStartup",
+         "OpenDocument":"onOpenDocument",
+         "SelectionChanged.finish" : "onSelectionChanged"
+       }
+     }
+   },
+    {
+        "script" : "LocalizerScript.cocoascript",
+        "handlers" : {
+            "actions" : {
+                "localiseIOS.start" : "localiseIOS",
+            }
+        }
+    }
+ ]
+}

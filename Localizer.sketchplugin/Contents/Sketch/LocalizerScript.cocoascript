@@ -1,0 +1,220 @@
+//--------------------------------------
+// Global Variables
+//--------------------------------------
+
+var doc,
+baseLanguagePage,
+selection,
+platform = "iOS"
+
+
+var onStartup = function(context) {
+    log("Started up app store export plugin");
+}
+
+var onOpenDocument = function(context) {
+    log("onOpenDocument");
+}
+
+var onSelectionChanged = function(context) {
+    log("selection changed");
+}
+
+function getMainDocument (context) {
+    const documents = NSApplication.sharedApplication().orderedDocuments()
+    if (!documents || !documents.length) {
+        return context.api().Application(context).newDocument()
+    }
+    return documents.find(d => d.documentWindow().isMainWindow()) || documents[0]
+}
+
+// Let the user specify a directory
+function selectSaveFolder(){
+    var panel = [NSOpenPanel openPanel]
+    [panel setMessage:"Select a folder to save to"]
+    [panel setCanChooseDirectories: true]
+    [panel setCanChooseFiles: false]
+    [panel setCanCreateDirectories:true]
+    var default_dir = [[doc fileURL] URLByDeletingLastPathComponent]
+    [panel setDirectoryURL:default_dir]
+    
+    if ([panel runModal] == NSOKButton){
+        var message = [panel filename]
+        return message;
+    }
+}
+
+function exportAllPages(){
+    exportFolder = selectSaveFolder()
+    log("exporting")
+    if(exportFolder != undefined) {
+        var pages = [doc pages]
+        var pagesLoop = [pages objectEnumerator], pageToSave;
+        while (pageToSave = [pagesLoop nextObject]) {
+            
+            var artBoards = [pageToSave artboards]
+            log("artBoards: " + artBoards)
+
+            var artboardsLoop = [artBoards objectEnumerator], artboard;
+            while (artboard = [artboardsLoop nextObject]) {
+                // switch to that page (otherwise Sketch won't print)
+                [doc setCurrentPage:pageToSave]
+                
+                var artboardName = [artboard name]
+                var pageName = [pageToSave name]
+                if (artboardName != "no-save") {
+                    var fileNameToSave = exportFolder + "/" + pageName + "_" + artboardName + ".png"
+                    [doc saveArtboardOrSlice:artboard toFile:fileNameToSave]
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------
+// select layers by type
+
+var selectLayersOfType_inContainer = function(page, layerType, containerLayer) {
+    
+    // Filter layers using NSPredicate
+    var scope = (typeof containerLayer !== 'undefined') ? [containerLayer children] : [page children],
+    predicate = NSPredicate.predicateWithFormat("(className == %@)", layerType),
+    layers = [scope filteredArrayUsingPredicate:predicate];
+    
+    // Deselect current selection
+    page.changeSelectionBySelectingLayers(nil);
+    
+    // Loop through filtered layers and select them
+    var loop = [layers objectEnumerator], layer;
+    while (layer = [loop nextObject]) {
+        [layer select:true byExtendingSelection:true]
+    }
+    selection = layers
+    //log([layers count] + " " + layerType + "s selected")
+}
+
+// find pages and layers
+var findPagesNamed = function(pageName) {
+    var predicate = NSPredicate.predicateWithFormat("name == %@", pageName)
+    return findLayersMatchingPredicate_inContainer_filterByType(predicate, nil, MSPage)
+}
+
+var findLayersMatchingPredicate_inContainer_filterByType = function(predicate, container, layerType) {
+    var scope;
+    switch (layerType) {
+        case MSPage :
+            scope = doc.pages()
+            return scope.filteredArrayUsingPredicate(predicate)
+            break;
+            
+        case MSArtboardGroup :
+            if(typeof container !== 'undefined' && container != nil) {
+                if (container.className == "MSPage") {
+                    scope = container.artboards()
+                    return scope.filteredArrayUsingPredicate(predicate)
+                }
+            } else {
+                // search all pages
+                var filteredArray = NSArray.array()
+                var loopPages = doc.pages().objectEnumerator(), page;
+                while (page = loopPages.nextObject()) {
+                    scope = page.artboards()
+                    filteredArray = filteredArray.arrayByAddingObjectsFromArray(scope.filteredArrayUsingPredicate(predicate))
+                }
+                return filteredArray
+            }
+            break;
+            
+        default :
+            if(typeof container !== 'undefined' && container != nil) {
+                scope = container.children()
+                return scope.filteredArrayUsingPredicate(predicate)
+            } else {
+                // search all pages
+                var filteredArray = NSArray.array()
+                var loopPages = doc.pages().objectEnumerator(), page;
+                while (page = loopPages.nextObject()) {
+                    scope = page.children()
+                    filteredArray = filteredArray.arrayByAddingObjectsFromArray(scope.filteredArrayUsingPredicate(predicate))
+                }
+                return filteredArray
+            }
+    }
+    return NSArray.array() // Return an empty array if no matches were found
+}
+
+var findFirstLayerMatchingPredicate_inContainer_filterByType = function(predicate, container, layerType) {
+    var filteredArray = findLayersMatchingPredicate_inContainer_filterByType(predicate, container, layerType)
+    return filteredArray.firstObject()
+}
+
+function localiseStringForKey(stringKey) {
+    switch (platform) {
+        case "iOS":
+            return ""//return localizedStringForKey
+        case "Android":
+            return ""//return
+        default:
+            return ""
+    }
+}
+
+function duplicatePage (doc, page, name) {
+    // duplicate pages
+    newPage = [page copy]
+    newPage.setName(name)
+    
+    [[doc documentData] addPage:newPage]
+    [doc setCurrentPage:newPage]
+    var view = doc.currentView()
+    [view setZoomValueCenteredInCanvas:0.25]
+}
+
+function loadLanguageManager(pluginRoot) {
+    if (NSClassFromString('LLLanguageManager') == null) {
+        var mocha = [Mocha sharedRuntime];
+        return [mocha loadFrameworkWithName:'StoreExportPanel' inDirectory:pluginRoot];
+    } else {
+        return true;
+    }
+}
+
+function localiseTextLayersForPage(doc, context) {
+    var loopLayers= selection.objectEnumerator(), textLayer;
+    while (textLayer = loopLayers.nextObject()) {
+        textLayer.setNameIsFixed(0)
+        const textValue = [[LLLanguageManager shared] stringForKey:textLayer.name()]
+         [textLayer setStringValue: textValue];
+    }
+}
+
+var localiseIOS = function (context) {
+    platform = "iOS"
+    doc = getMainDocument(context)
+    baseLanguagePage = [doc currentPage]
+
+    var scriptPath = context.scriptPath;
+    var pluginRoot = [scriptPath stringByDeletingLastPathComponent];
+    loadLanguageManager(pluginRoot);
+    
+    var loop = [[[LLLanguageManager shared] languages] objectEnumerator], language;
+    while (language = [loop nextObject]) {
+        [[LLLanguageManager shared] setLanguage:language];
+        duplicatePage(doc, baseLanguagePage, language)
+        selectLayersOfType_inContainer([doc currentPage],"MSTextLayer")
+        localiseTextLayersForPage(doc, context)//select text layers and localize
+    }
+    [[LLLanguageManager shared] setLanguage:"en"];
+    
+    exportAllPages()
+}
+
+
+
+
+
+var localiseAndroid = function (context) {
+    platform = "Android"
+    //future stuff...
+}
+
